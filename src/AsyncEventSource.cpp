@@ -173,7 +173,9 @@ AsyncEventSourceClient::AsyncEventSourceClient(AsyncWebServerRequest *request, A
 }
 
 AsyncEventSourceClient::~AsyncEventSourceClient(){
+   _lockmq.lock(); // protect _messageQueue
    _messageQueue.free();
+   _lockmq.unlock();
   close();
 }
 
@@ -188,18 +190,22 @@ void AsyncEventSourceClient::_queueMessage(AsyncEventSourceMessage *dataMessage)
       ets_printf("ERROR: Too many messages queued\n");
       delete dataMessage;
   } else {
+      _lockmq.lock(); // protect _messageQueue
       _messageQueue.add(dataMessage);
+      _lockmq.unlock(); // protect _messageQueue
   }
   if(_client->canSend())
     _runQueue();
 }
 
 void AsyncEventSourceClient::_onAck(size_t len, uint32_t time){
+  _lockmq.lock(); // protect _messageQueue
   while(len && !_messageQueue.isEmpty()){
     len = _messageQueue.front()->ack(len, time);
     if(_messageQueue.front()->finished())
       _messageQueue.remove(_messageQueue.front());
   }
+  _lockmq.unlock(); // protect _messageQueue
 
   _runQueue();
 }
@@ -234,16 +240,65 @@ void AsyncEventSourceClient::send(const char *message, const char *event, uint32
   _queueMessage(new AsyncEventSourceMessage(ev.c_str(), ev.length()));
 }
 
-void AsyncEventSourceClient::_runQueue(){
-  while(!_messageQueue.isEmpty() && _messageQueue.front()->finished()){
+// void AsyncEventSourceClient::_runQueue(){
+//   while(!_messageQueue.isEmpty() && _messageQueue.front()->finished()){
+//     _messageQueue.remove(_messageQueue.front());
+//   }
+
+//   for(auto i = _messageQueue.begin(); i != _messageQueue.end(); ++i)
+//   {
+//     if(!(*i)->sent())
+//       (*i)->send(_client);
+//   }
+// }
+void AsyncEventSourceClient::_runQueue() {
+  volatile static int c = 0;
+  int sentcounter = 0;
+  // c++;
+  // if (c > 1) {
+  //   ets_printf("AsyncEventSourceClient::_runQueue() Skipped Concurrent:%d\n",
+  //              c);
+  // } else {
+  _lockmq.lock(); // protect _messageQueue
+  c++;
+  if (c > 1) {
+    ets_printf("core[%d]: AsyncEventSourceClient::_runQueue() locking does not "
+               "work properly...???: c=%d\n",
+               xPortGetCoreID(), c);
+    c--;
+    return;
+  }
+  while (!_messageQueue.isEmpty() && _messageQueue.front()->finished()) {
     _messageQueue.remove(_messageQueue.front());
   }
+  ets_printf(
+      "core[%d]: AsyncEventSourceClient::_runQueue() New run BEGIN: c=%d\n",
+      xPortGetCoreID(), c);
 
-  for(auto i = _messageQueue.begin(); i != _messageQueue.end(); ++i)
-  {
-    if(!(*i)->sent())
+  // ArFi looping through list wile invalidating iterator???
+  // looks like _messageQueue is a resource touched everywhere...
+  int counter = 0;
+  for (auto i = _messageQueue.begin(); i != _messageQueue.end(); ++i) {
+    // If it crashes here, iterator (i) has been invalidated as _messageQueue
+    // has been changed
+    ets_printf("core[%d]: AsyncEventSourceClient::_runQueue(), "
+               "loopcounter: %d, c=%d\n",
+               xPortGetCoreID(), counter++, c);
+
+    if (!(*i)->sent()) {
+      sentcounter++;
+      ets_printf("core[%d]: AsyncEventSourceClient::_runQueue(), "
+                 "loopcounter: %d "
+                 "[send:%d] c=%d\n",
+                 xPortGetCoreID(), counter++, sentcounter, c);
       (*i)->send(_client);
+    }
   }
+  c--;
+  _lockmq.unlock(); // protect _messageQueue
+  //   ets_printf("AsyncEventSourceClient::_runQueue() New run DONE:%d\n", c);
+  // }
+  // c--;
 }
 
 

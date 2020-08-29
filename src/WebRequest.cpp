@@ -180,11 +180,45 @@ void AsyncWebServerRequest::_onData(void *buf, size_t len){
 
 void AsyncWebServerRequest::_removeNotInterestingHeaders(){
   if (_interestingHeaders.containsIgnoreCase("ANY")) return; // nothing to do
-  for(const auto& header: _headers){
-      if(!_interestingHeaders.containsIgnoreCase(header->name().c_str())){
-        _headers.remove(header);
-      }
+  // for(const auto& header: _headers){
+  //     if(!_interestingHeaders.containsIgnoreCase(header->name().c_str())){
+  //       _headers.remove(header);
+  //     }
+  // }
+
+  // debug ArFi (just printing the list before removal)
+  for (const auto &header : _headers) {
+    ets_printf("Checking[DryRun Before] header: 0x%08x, name: %s, value: %s",
+               header, header->name().c_str(), header->value().c_str());
+    if (!_interestingHeaders.containsIgnoreCase(header->name().c_str())) {
+      ets_printf(" ... TO BE REMOVED");
+      //_headers.remove(header);
+    }
+    ets_printf("\n");
   }
+  ets_printf("\n");
+  ets_printf("\n");
+  // end debug
+
+  // restart loop after each removal to prevent crash (brute force way)
+  // iterator gets invalidated after first remove, and crashes on next access
+  bool done = false;
+  while (!done) {
+    done = true;
+    // loop true list and if one item to be removed is found, remove(), stop
+    // iteration and restart search (while)
+    for (const auto &header : _headers) {
+      // ets_printf("Checking -- header->name().c_str(): %s",
+      //            header->name().c_str());
+      if (!_interestingHeaders.containsIgnoreCase(header->name().c_str())) {
+        //ets_printf(" ... REMOVING and restarting loop\n");
+        _headers.remove(header);
+        done = false;
+        break;
+      }
+      ets_printf("\n");
+    } // for
+  }   // while
 }
 
 void AsyncWebServerRequest::_onPoll(){
