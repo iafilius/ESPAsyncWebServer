@@ -74,7 +74,7 @@ class AsyncEventSourceClient {
     LinkedList<AsyncEventSourceMessage *> _messageQueue;
     void _queueMessage(AsyncEventSourceMessage *dataMessage);
     void _runQueue();
-    AsyncWebLock _lockmq; // ArFi 2020/08/27 for protecting/serializing _messageQueue
+    AsyncWebLockMQ _lockmq; // ArFi 2020/08/27 for protecting/serializing _messageQueue
 
   public:
 
