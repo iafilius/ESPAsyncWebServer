@@ -18,13 +18,13 @@ private:
   mutable void *_lockedBy;
 
 public:
-  AsyncWebLock() {
+  AsyncWebLockMQ() {
     _lock = xSemaphoreCreateBinary();
     //_lockedBy = NULL;
     xSemaphoreGive(_lock);
   }
 
-  ~AsyncWebLock() {
+  ~AsyncWebLockMQ() {
     vSemaphoreDelete(_lock);
   }
 
