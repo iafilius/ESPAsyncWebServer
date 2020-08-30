@@ -138,6 +138,9 @@ size_t AsyncEventSourceMessage::ack(size_t len, uint32_t time) {
 }
 
 size_t AsyncEventSourceMessage::send(AsyncClient *client) {
+   ets_printf("AsyncEventSourceMessage::send ");
+   ets_printf("0x%08x\n",client); // most likely it will crash here now after screen/app closure
+
   const size_t len = _len - _sent;
   if(client->space() < len){
     return 0;
